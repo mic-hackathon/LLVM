@@ -1,0 +1,33 @@
+===-------------------------------------------------------------------------===
+                          ... Statistics Collected ...
+===-------------------------------------------------------------------------===
+
+  1 cgscc-passmgr         - Maximum CGSCCPassMgr iterations on one SCC
+ 76 early-cse             - Number of instructions CSE'd
+113 early-cse             - Number of instructions simplified or DCE'd
+ 38 gvn                   - Number of instructions deleted
+ 18 gvn                   - Number of instructions simplified
+  8 gvn                   - Number of loads deleted
+  1 inline                - Number of caller-callers analyzed
+ 11 inline                - Number of functions inlined
+ 16 inline-cost           - Number of call sites analyzed
+ 36 instcombine           - Number of dead inst eliminated
+  3 instcombine           - Number of instructions sunk
+235 instcombine           - Number of insts combined
+ 12 lcssa                 - Number of live out of a loop variables
+  1 licm                  - Number of instructions hoisted out of loop
+ 12 loop-unswitch         - Total number of instructions analyzed
+  3 mem2reg               - Number of PHI nodes inserted
+ 80 mem2reg               - Number of alloca's promoted with a single store
+  6 mem2reg               - Number of alloca's promoted within one block
+  7 memdep                - Number of block queries that were completely cached
+ 92 memdep                - Number of fully cached non-local ptr responses
+170 memdep                - Number of uncached non-local ptr responses
+994 memory-builtins       - Number of arguments with unsolved size and offset
+  3 scalar-evolution      - Number of loops without predictable loop counts
+130 scalarrepl            - Number of allocas promoted
+  4 simplify-libcalls     - Number of attributes added to library functions
+  9 simplifycfg           - Number of blocks simplified
+  4 strip-dead-prototypes - Number of dead prototypes removed
+  1 tailcallelim          - Number of tail calls removed
+
