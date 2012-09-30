@@ -1,0 +1,276 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>ghc llvm backend &mdash; LLVM 0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../static/haiku.css" type="text/css" />
+    <link rel="stylesheet" href="../static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/print.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../static/jquery.js"></script>
+    <script type="text/javascript" src="../static/underscore.js"></script>
+    <script type="text/javascript" src="../static/doctools.js"></script>
+    <script type="text/javascript" src="../_static/theme_extras.js"></script>
+    <link rel="top" title="LLVM 0.1 documentation" href="../index.html" />
+    <link rel="prev" title="Welcome to LLVM’s documentation!" href="../index.html" /> 
+  </head>
+  <body>
+      <div class="header"><h1 class="heading"><a href="../index.html">
+          <span>LLVM 0.1 documentation</span></a></h1>
+        <h2 class="heading"><span>ghc llvm backend</span></h2>
+      </div>
+      <div class="topnav">
+      
+        <p>
+        «&#160;&#160;<a href="../index.html">Welcome to LLVM&#8217;s documentation!</a>
+        &#160;&#160;::&#160;&#160;
+        <a class="uplink" href="../index.html">Contents</a>
+        </p>
+
+      </div>
+      <div class="content">
+        
+        
+  <div class="section" id="ghc-llvm-backend">
+<h1>ghc llvm backend<a class="headerlink" href="#ghc-llvm-backend" title="Permalink to this headline">¶</a></h1>
+<p>GHC7.6.2と、llvm-3.2(trunk)で試してきました。</p>
+<p>参考URL
+<a class="reference external" href="http://hackage.haskell.org/trac/ghc/wiki/Commentary/Compiler/Backends/LLVM">http://hackage.haskell.org/trac/ghc/wiki/Commentary/Compiler/Backends/LLVM</a></p>
+<p>主な制御はこんなかんじらしい</p>
+<div class="highlight-python"><pre>Cmm -&gt; (codeOutput) ---&gt;(ncg) Assembler      --&gt;(mangler, splitter) --&gt; ('As' phase) -----&gt; Object Code --&gt; (link) --&gt; executable
+                        \---&gt; (llvm) LLVM IR --&gt; LLVM Optimizer     --&gt; ('llc' phase) -----/</pre>
+</div>
+<div class="section" id="id1">
+<h2>予想<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+<p>optとllcを使うらしい</p>
+<p>haskellからc++のbindingされたAPIを呼び出して、</p>
+<p>主にLLVMのbitcode生成機能(C++API), opt, llcを使用するはず</p>
+<p>cmm -&gt; bitcode -&gt; optimize -&gt; codegen -&gt; asm</p>
+</div>
+<div class="section" id="id2">
+<h2>結論<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
+<p>cmm -&gt; LLVM-IR -&gt; optimize -&gt; codegen -&gt; asm</p>
+<p>cmm -&gt; pretty print ll -&gt; llvm-as -&gt; opt -&gt; llc -&gt; xxx.s -&gt; mangler -&gt; xxx.o</p>
+<p>ghc側で、以下のように外部のコマンドを呼び出している。</p>
+<p>$ opt &lt; xxx.ll | llc</p>
+<p>$ cat xxx.ll | llvm-as | opt | llc</p>
+<p>ghcのllvm backendは、LLVMのAPIのxxな仕様変更を回避するためなのか、</p>
+<p>C++APIを呼ぶのが面倒だったのかわからないが、</p>
+<p>cmmからllへpretty printするだけの簡単なお仕事だった。すばらしい。</p>
+<p>API叩いてbitcodeを生成しないところがポイント。</p>
+<p>llファイル固有のtarget datalayoutやtarget tripleがmagic string化されている。</p>
+</div>
+<div class="section" id="id3">
+<h2>ダンプオプションを探す<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h2>
+<p>いろいろあった。</p>
+<div class="highlight-python"><pre>-fllvm       opt codegenを使ってオブジェクトを生成する。
+-ddump-llvm  optに渡す前のllファイルをダンプする。
+-keep-llvm-file optに渡す前のllファイルを、xxx.hs --&gt; xxx.llにファイル出力
+-optlo       optに渡すオプションを指定できる。
+             llvmのvectorizeやprofile guilded optimizationが使えるかも
+-optlc       llcに渡すオプションを指定できる。</pre>
+</div>
+</div>
+<div class="section" id="id4">
+<h2>疑問点<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h2>
+<p>pprとはなんぞや &lt;&#8211; pretty print</p>
+<p>何か特殊なことをしている？</p>
+<p>llvmが生成したasmをGHCがmanglerで書き換えている</p>
+</div>
+<div class="section" id="id5">
+<h2>構成<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h2>
+<p>gch-7.6.1</p>
+<p>compiler/llvmGen</p>
+<div class="highlight-python"><pre>file/dir       line  comment
+Llvm
+  AbsSyn.hs     269  LLVM-IRの構文定義
+  PpLlvm.hs     422  LLVM-IRのシンボル定義とpretty printの親
+  Types.h       822  LLVM-IRのTypeSystem用のシンボル定義とpretty print
+Llvm.hs          58  Llvmの下をimportして、module Llvm全体を定義する
+LlvmCodeGen
+  Base.hs       258
+  CodeGen.hs   1362  CmmからLLVM-IRをpretty printer
+  Data.hs       187  structのpretty printer
+  Ppr.hs        158  target datalayout target tripleをmagic wordとして定義
+  Regs.h        109  haskell CallingConv向けの定義や、metadataの定義
+LlvmCodegen.hs  162  主制御っぽい
+LlvmMangler.hs  122  manglerらしい。assemblyを食べて素で書き換えるらしい。</pre>
+</div>
+</div>
+<div class="section" id="src">
+<h2>src<a class="headerlink" href="#src" title="Permalink to this headline">¶</a></h2>
+<p>mainからの呼び出し制御は以下の2点</p>
+<p>module LlvmCodeGen ( llvmCodeGen, llvmFixupAsm ) where</p>
+<div class="highlight-python"><pre>llvmCodeGen :: DynFlags -&gt; Handle -&gt; UniqSupply -&gt; [RawCmmGroup] -&gt; IO ()
+llvmFixupAsm :: DynFlags -&gt; FilePath -&gt; FilePath -&gt; IO ()</pre>
+</div>
+<p>GHCの最適化オプションと、opt/llcに指定する最適化オプションの対応</p>
+<p>compiler/main/DriverPipline.hs</p>
+<div class="highlight-python"><pre>llvmOpts = ["-mem2reg", "-O1", "-O2"]  &lt;-- GHCのOxオプションに対応して呼ばれる。
+
+llcの最適化オプションは、GHCに指定されたO0 O2 O3と同じものをllcに指定する。</pre>
+</div>
+<p>上記はLinuxの場合で、OSXではO3を使わない. &#8211; Bug in LLVM at O3 on OSX.</p>
+</div>
+<div class="section" id="llvm">
+<h2>LLVM向け拡張機能<a class="headerlink" href="#llvm" title="Permalink to this headline">¶</a></h2>
+<p>GHCのwikiのllvmページ
+<a class="reference external" href="http://hackage.haskell.org/trac/ghc/wiki/Commentary/Compiler/Backends/LLVM">http://hackage.haskell.org/trac/ghc/wiki/Commentary/Compiler/Backends/LLVM</a></p>
+<p>Work in progress</p>
+<p>SIMD いろいろやってるみたい</p>
+<p>AliasAnalysis 7.6.2だと、すでにtbaa出してる</p>
+<p>連携時には、GHC用のCallingConvとTypeBaseAliasAnalysis用のMetadataを付加している。</p>
+<img alt="../images/llvmbackend.png" src="../images/llvmbackend.png" />
+</div>
+<div class="section" id="aliasanalysis-tbaa">
+<h2>AliasAnalysis TBAA<a class="headerlink" href="#aliasanalysis-tbaa" title="Permalink to this headline">¶</a></h2>
+<p>6種定義</p>
+<p>定義されているMetadata</p>
+<div class="highlight-python"><pre>0 top
+1 top-&gt;stack     //           仮引数Sp_Argから派生したポインタ
+2 top-&gt;heap      //           仮引数Hp_Argから派生したポインタ
+3 top-&gt;heap-&gt;rx  // VanillaReg 仮引数R1_Argから派生したポインタ
+4 top-&gt;base      // BaseReg    仮引数Base_Argから派生したポインタ
+5 top-&gt;other     // 使われないはず。</pre>
+</div>
+<p>異なるmetadataであれば安全なはず</p>
+<p>HaskellのCCの場合、関数の仮引数にはBase_Arg, Sp_Arg, Hp_Arg R1_Argが存在する。
+各々のポインタはnoalias属性が付いているが、各i32*型から派生したポインタが、
+noaliasであることをLLVMのAliasAnalysisに教えるために、TBAAのmetadataを付けている。</p>
+</div>
+<div class="section" id="metadata">
+<h2>Metadataの効果<a class="headerlink" href="#metadata" title="Permalink to this headline">¶</a></h2>
+<p>optimizerの最適化の統計情報を比較してみます。</p>
+<p>Metadataなし(7.4.2ではでない)</p>
+<div class="highlight-python"><pre>===-------------------------------------------------------------------------===
+                          ... Statistics Collected ...
+===-------------------------------------------------------------------------===
+
+  1 cgscc-passmgr         - Maximum CGSCCPassMgr iterations on one SCC
+ 76 early-cse             - Number of instructions CSE'd
+113 early-cse             - Number of instructions simplified or DCE'd
+ 38 gvn                   - Number of instructions deleted
+ 18 gvn                   - Number of instructions simplified
+  8 gvn                   - Number of loads deleted
+  1 inline                - Number of caller-callers analyzed
+ 11 inline                - Number of functions inlined
+ 16 inline-cost           - Number of call sites analyzed
+ 36 instcombine           - Number of dead inst eliminated
+  3 instcombine           - Number of instructions sunk
+235 instcombine           - Number of insts combined
+ 12 lcssa                 - Number of live out of a loop variables
+  1 licm                  - Number of instructions hoisted out of loop
+ 12 loop-unswitch         - Total number of instructions analyzed
+  3 mem2reg               - Number of PHI nodes inserted
+ 80 mem2reg               - Number of alloca's promoted with a single store
+  6 mem2reg               - Number of alloca's promoted within one block
+  7 memdep                - Number of block queries that were completely cached
+ 92 memdep                - Number of fully cached non-local ptr responses
+170 memdep                - Number of uncached non-local ptr responses
+994 memory-builtins       - Number of arguments with unsolved size and offset
+  3 scalar-evolution      - Number of loops without predictable loop counts
+130 scalarrepl            - Number of allocas promoted
+  4 simplify-libcalls     - Number of attributes added to library functions
+  9 simplifycfg           - Number of blocks simplified
+  4 strip-dead-prototypes - Number of dead prototypes removed
+  1 tailcallelim          - Number of tail calls removed
+
+</pre>
+</div>
+<p>Metadataあり</p>
+<div class="highlight-python"><pre>===-------------------------------------------------------------------------===
+                          ... Statistics Collected ...
+===-------------------------------------------------------------------------===
+
+   1 cgscc-passmgr         - Maximum CGSCCPassMgr iterations on one SCC
+  76 early-cse             - Number of instructions CSE'd
+ 113 early-cse             - Number of instructions simplified or DCE'd
+  40 gvn                   - Number of instructions deleted             &lt;-- この数値が増えてる。
+  18 gvn                   - Number of instructions simplified              Load命令とLoad命令のAliasが分かるようになって、
+  10 gvn                   - Number of loads deleted                        冗長なLoadを削除できるようになった。
+   1 inline                - Number of caller-callers analyzed
+  11 inline                - Number of functions inlined
+  16 inline-cost           - Number of call sites analyzed
+  36 instcombine           - Number of dead inst eliminated
+   3 instcombine           - Number of instructions sunk
+ 235 instcombine           - Number of insts combined
+  12 lcssa                 - Number of live out of a loop variables
+   2 licm                  - Number of instructions hoisted out of loop
+   1 licm                  - Number of load insts hoisted or sunk
+  12 loop-unswitch         - Total number of instructions analyzed
+   3 mem2reg               - Number of PHI nodes inserted
+  80 mem2reg               - Number of alloca's promoted with a single store
+   6 mem2reg               - Number of alloca's promoted within one block
+   4 memdep                - Number of block queries that were completely cached
+ 113 memdep                - Number of fully cached non-local ptr responses
+ 186 memdep                - Number of uncached non-local ptr responses
+1093 memory-builtins       - Number of arguments with unsolved size and offset
+   3 scalar-evolution      - Number of loops without predictable loop counts
+ 130 scalarrepl            - Number of allocas promoted
+   4 simplify-libcalls     - Number of attributes added to library functions
+   9 simplifycfg           - Number of blocks simplified
+   4 strip-dead-prototypes - Number of dead prototypes removed
+   1 tailcallelim          - Number of tail calls removed
+
+</pre>
+</div>
+</div>
+<div class="section" id="ghc-callingconvention">
+<h2>GHC CallingConvention<a class="headerlink" href="#ghc-callingconvention" title="Permalink to this headline">¶</a></h2>
+<p>LLVM</p>
+<p><a class="reference external" href="http://llvm.org/docs/LangRef.html#callingconv">http://llvm.org/docs/LangRef.html#callingconv</a></p>
+<p>&#8220;cc 10&#8221; - GHC convention:</p>
+<p>This calling convention has been implemented specifically for use by the Glasgow Haskell Compiler (GHC). It passes everything in registers, going to extremes to achieve this by disabling callee save registers. This calling convention should not be used lightly but only for specific situations such as an alternative to the register pinning performance technique often used when implementing functional programming languages.At the moment only X86 supports this convention and it has the following limitations:
+On X86-32 only supports up to 4 bit type parameters. No floating point types are supported.
+On X86-64 only supports up to 10 bit type parameters and 6 floating point parameters.
+This calling convention supports tail call optimization but requires both the caller and callee are using it.</p>
+<p>sample</p>
+<div class="highlight-python"><pre>define internal cc10 void @s1Vh_info(i32* noalias nocapture %Base_Arg, i32* noalias nocapture %Sp_Arg, i32* noalias nocapture %Hp_Arg, i32 %R1_Arg) nounwind section "X98A__STRIP,__me2" align 4 {
+c1Wb:
+  %ln1Wd = getelementptr inbounds i32* %Sp_Arg, i32 1
+  %ln1Wf = load i32* %ln1Wd, align 4
+  %ln1Wh = mul i32 %ln1Wf, %R1_Arg
+  %ln1Wk = getelementptr inbounds i32* %Sp_Arg, i32 2
+  %ln1Wq = load i32* %ln1Wk, align 4
+  %ln1Wr = inttoptr i32 %ln1Wq to void (i32*, i32*, i32*, i32)*
+  tail call cc10 void %ln1Wr(i32* %Base_Arg, i32* %ln1Wk, i32* %Hp_Arg, i32 %ln1Wh) nounwind
+  ret void
+}</pre>
+</div>
+</div>
+</div>
+
+
+      </div>
+      <div class="bottomnav">
+      
+        <p>
+        «&#160;&#160;<a href="../index.html">Welcome to LLVM&#8217;s documentation!</a>
+        &#160;&#160;::&#160;&#160;
+        <a class="uplink" href="../index.html">Contents</a>
+        </p>
+
+      </div>
+
+    <div class="footer">
+        &copy; Copyright 2012, nothingcosmos.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
+    </div>
+  </body>
+</html>
