@@ -12,14 +12,16 @@ http://ispc.github.io/
 
 OSSで開発されており、バックエンドにLLVMを使用しています。
 
-主にSIMDを搭載したCPUやXeon Phiで効率のよいコードを生成できます。
+ISPCはC風のISPC言語でkernelを記述し、リンクして実行できます。
+
+ISPC言語のフロントエンドは、flexとbisonによる独自実装になっています。
+
+ISCPの特徴として、 SIMDを搭載したCPUやXeon Phiで効率のよいコードを生成できます。
 
 GPGPUはターゲットにしていませんが、ARM NEONはターゲットになっています。
 
-ISPCはC風のISPC言語でkernelを記述し、リンクして実行できます。
-
 問題点として、icpc(インテル(R) C++ コンパイラ)と名前が似ていてややこしい、
-開発者がIntelからGoogleに移籍してしまったなどが挙げられます。
+開発者がIntelからGoogleに移籍してしまったことなどがありますね。。
 
 Xeon Phiへの対応
 ===============================================================================
@@ -44,16 +46,17 @@ Xeon E5-2620 dual coreの24threadでもスケールするようなプログラ�
 その後、60コア 240threadのXeon Phiで試す。
 
 scalar演算の単体性能では、Xeon PhiはXeon E5-2620の1/10くらい
+
 Xeon Phiは512bit SIMD命令をきっちり使いきらないと性能はでないのかも。
 そういう意味でISPCと相性がいい。
 
-MICはコアがring上に並んでおり、
+MICはコアがring上に並んでおり、コア間のデータのやりとりをしすぎると、
 L2キャッシュ コヒーレントがネックになって性能が出ないことがあるらしい。
 
-
 ソフトウェアプリフェッチをがつがつ入れたほうがいいらしい。
-intelコンパイラは大量のソフトウェアプリフェッチを挿入する。
+ハードウェアプリフェッチに期待するのは現状NG。
 
+intelコンパイラは大量のソフトウェアプリフェッチを挿入するらしい。
 
 ISPCでのコンパイル手順
 ===============================================================================
@@ -82,9 +85,6 @@ options ::
 
 ヘッダファイルはマクロが定義されており、C/C++どちらでもOK
 
-ISPCの詳細は省略。
-
-
 ISPCのMIC向けコンパイル手順
 ===============================================================================
 
@@ -100,7 +100,8 @@ ispc/example をMIC向けにクロスコンパイルする場合は以下
 
 ::
 
-  $ ispc -O2 --emit-c++ -h sample_ispc.h sample.ispc --target=generic-16 --c++-include-file=knc.h -Iintrinsics -o sample_generic16_knc.cpp
+  $ ispc -O2 --emit-c++ -h sample_ispc.h sample.ispc \
+    --target=generic-16 --c++-include-file=knc.h -Iintrinsics -o sample_generic16_knc.cpp
 
 MIC向けにクロスコンパイルする場合、--target=generic-16と、--c++-include-file=knc.h が必要。
 
@@ -113,7 +114,8 @@ MIC向けの場合、generic-16の指定が必要。core i7の場合、generic-4
 
 MICへのクロスコンパイル ::
 
-  $ icpc -O2 --mmic -lpthread -Iobjs -I../intrinsics -I/opt/intel/composer_xe_2013/include main.cpp sample_knc.cpp ../tasksys.cpp -o sample.out
+  $ icpc -O2 --mmic -lpthread -Iobjs -I../intrinsics -I/opt/intel/composer_xe_2013/include \
+    main.cpp sample_knc.cpp ../tasksys.cpp -o sample.out
 
 --micオプションは、MIC向けのクロスコンパイルオプション
 
@@ -176,8 +178,21 @@ ISPC公式のPerformance http://ispc.github.io/perf.html
   Ray Tracer (Sponza dataset)        , 195.67x
   Volume Rendering                   , 243.18x
 
+
+ispcが生成したC++ソースコードは、リポジトリに挙げています。
+
+_generic16_knc.cppってのが生成したソースコードです。
+
+例)
+https://github.com/nothingcosmos/LLVM/blob/master/ISPC/examples_knc/mandelbrot_tasks/mandelbrot_generic16_knc.cpp
+https://github.com/nothingcosmos/LLVM/blob/master/ISPC/examples_knc/volume_rendering/volume_generic16_knc.cpp
+https://github.com/nothingcosmos/LLVM/blob/master/ISPC/examples_knc/options/options_generic16_knc.cpp
+
+
 測定結果
 ===============================================================================
+
+MICでの測定結果 ::
 
   =====         =====         =====               =====                 =====
   bench         core i7 2600  Xeon E5-2620(dual)  Xeon Phi 5000ファミリ
@@ -192,7 +207,7 @@ ISPC公式のPerformance http://ispc.github.io/perf.html
   volume        4443.99       1020.73              453.11               Xeon Phiで性能向上
   =====         =====         =====               =====                 =====
 
-scalarでの実行を1.0xとした性能向上率
+scalarでの実行を1.0xとした性能向上率 ::
 
   =====         =====         =====               =====                 =====
   bench         core i7 2600  Xeon E5-2620(dual)  Xeon Phi 5000ファミリ
@@ -210,41 +225,60 @@ scalarでの実行を1.0xとした性能向上率
 拡張オプションを使用した測定結果
 ===============================================================================
 
-todo
+Xeon Phi 5000ファミリ 1.0GHz 60coreを使用
 
-  =====         =====         =====               =====                 =====
-  bench         core i7 2600  Xeon E5-2620(dual)  Xeon Phi 5000ファミリ
-                3.4GHz 4core  2.0GHz 12core       1.0GHz 60core
-                (MCycle)      (MCycle)            (MCycle)
-  =====         =====         =====               =====                 =====
-  aobench       
-  mandelbrot  
-  binomial    
-  black-scholes
-  rt            
-  volume   
-  =====         =====         =====               =====                 =====
+OMPと7000系でも測ってみました。 ::
 
+  =====         =====      =====           =====          =====
+  bench         Pthread    ISPC_USE_OMP    ISPC_USE_OMP   備考
+                5000系     5000系          7000系
+                (MCycle)   (MCycle)        (MCycle)
+  =====         =====      =====           =====          =====
+  aobench       523.37     548.61          543.07
+  mandelbrot     22.97       8.79            8.77         OMPで効果あり
+  binomial      216.82     175.6           175.49         OMPで効果あり
+  black-scholes   3.8        1.8             1.45         OMPで効果あり、7000系で効果あり
+  rt             78.31      28.91           28.95         OMPで効果あり
+  volume        453.11     453.32          467.71
+  =====         =====      =====           =====          =====
+
+aobenchとvolume以外はPthreadからOMPに変更すると大きく性能向上していました。
+
+7000系はキャッシュが増えているらしいのですが、black-sholesで性能向上していますね。。
+
+ぶっちゃけmandelbrotとblack-scholesが速くなりすぎて胡散臭いですね。。
+結果不正になっていないことを祈ります。
+
+ISPCのアーキテクチャ
+###############################################################################
 
 ISPCのアーキテクチャ
 ===============================================================================
 
 Frontendで字句解析と構文解析(flex, bison)
 
-Exprで意味解析とAST変換、ベクトル化と構文に応じたbitcodeへの変換
+Exprで意味解析とAST変換、ベクトル化、bitcodeへの変換
 
-OptimizerはLLVMのOptimizerをベースに使っており、7-8個の独自Optimizerを追加している。
+OptimizerはLLVMを使っており、独自のPASSスケジューリング(ISPC独自の-Oオプション)と、
+7-8個の独自Optimizer(PASS)を追加している。
 
 BackendでLLVMのAPIを叩いて、objを生成するか、c++backendでC++ソースを生成。
 
 他の特徴として、
-Builtins Library
-Pseudo intrinsics
-TaskSystem
-がある。
+
+* Builtins Library
+* Pseudo intrinsics
+* TaskSystem
 
 ISPC Optimizer
 ===============================================================================
+
+LLVMをバックエンドに使用しており、LLVMに独自の最適化PASSを6-7個追加している。
+おもにメモリアクセスの最適化である。
+
+gether/scatterに変換する、
+メモリアクセスをアーキテクチャ依存の高速な命令に置換するもの、
+メモリアクセスを減らす最適化などなど
 
 ::
 
@@ -281,11 +315,13 @@ Optimizerで言及していたとおり、bitcodeで記述されたpseude intrin
 pseudo intrinsicsは、ISA固有の実装と、genericな実装など様々定義されている。
 SSE4, AVX, AVX2, NEON, GENERIC4, 8, 16...がある。
 
+C++でemitする、pseudo intrinsicsは、GENERICなものしか使用できない。MICの場合、GENERIC16を指定する。
+
 
 TaskSystem
 ===============================================================================
 
-launch文の処理は、multi threadで実行する。
+launch文の処理は、multithreadingで実行する。
 tasksystem.cppに定義されており、この辺はあまり頑張ってないというか、シンプルな実装になっている。
 
 pthread, omp, tbb task, tbb parallel, cilk の実装が用意されている。
